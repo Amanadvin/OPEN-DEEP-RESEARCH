@@ -1,5 +1,4 @@
 .env
-TAVILY_API_KEY = "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"
 .venv
 __pycache__/
 .vscode/
@@ -19,3 +18,5 @@ venv/
 *.pdf
 *.txt
 
+
+./sessions/

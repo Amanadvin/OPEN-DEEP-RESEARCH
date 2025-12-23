@@ -14,9 +14,22 @@ from pipeline import run_langgraph_pipeline
 from gtts import gTTS
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
-from vosk import Model, KaldiRecognizer
+# Removed top-level vosk import to avoid startup crashes; import inside function when needed.
 from PyPDF2 import PdfReader
 from streamlit_mic_recorder import mic_recorder
+
+import urllib.request
+import zipfile
+import shutil
+import stat
+from openai import OpenAI
+
+# Local LM Studio Client
+local_client = OpenAI(
+    base_url="http://localhost:1234/v1",
+    api_key="lm-studio",
+    timeout=180
+)
 
 # Import research & writer modules
 from research_assistant import (
@@ -28,12 +41,44 @@ from research_assistant import (
 )
 from writer import writer_agent, generate_pdf as writer_generate_pdf
 
+# --------------------------- FAST/WEB HELPERS ---------------------------
+def fast_summary_agent(query):
+    prompt = f"Give a fast and quick summary in fewer lines: {query}"
+    try:
+        response = local_client.chat.completions.create(
+            model="qwen2.5-7b-instruct-1m-q4",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        content = response.choices[0].message.content
+        return {"content": content, "sources": []}
+    except Exception as e:
+        return {"content": f"Error generating summary: {e}", "sources": []}
+
+
+def web_search_with_llm(query):
+    from research_assistant import web_search
+    raw = web_search(query, max_results=7)
+    tavily_content = raw.get("content", "")
+    sources = raw.get("sources", [])
+    prompt = f"Summarize the following web search results on '{query}' in a concise and informative way:\n\n{tavily_content}"
+    try:
+        response = local_client.chat.completions.create(
+            model="qwen2.5-7b-instruct-1m-q4",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        content = response.choices[0].message.content
+        return {"content": content, "sources": sources}
+    except Exception as e:
+        return {"content": f"Error: {e}", "sources": sources}
+
 # --------------------------- CONFIG & PATHS ---------------------------
 SESSIONS_DIR = "sessions"
 os.makedirs(SESSIONS_DIR, exist_ok=True)
 
 LOGO_PATH = "logo.png"
 VOSK_MODEL_PATH = "vosk-model"
+VOSK_MODEL_ZIP = "vosk-model-small-en-us-0.15.zip"
+VOSK_MODEL_URL = "https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip"
 
 # --------------------------- THEME CSS ---------------------------
 LIGHT_CSS = """
@@ -102,26 +147,94 @@ def delete_session_file(filename: str):
     except Exception:
         pass
 
-# --------------------------- VOSK TRANSCRIPTION ---------------------------
-def transcribe_audio_offline(wav_path):
+# --------------------------- VOSK TRANSCRIPTION (OFFLINE) ---------------------------
+def _download_with_progress(url, filename, progress_bar, status_text):
+    state = {"total": None}
+    def _reporthook(block_num, block_size, total_size):
+        if state['total'] is None and total_size:
+            state['total'] = total_size
+        if state['total'] and state['total'] > 0:
+            downloaded = block_num * block_size
+            frac = min(downloaded / state['total'], 1.0)
+            progress_bar.progress(frac)
+            status_text.text(f"Downloading Vosk model... {frac*100:.2f}%")
+    urllib.request.urlretrieve(url, filename, reporthook=_reporthook)
+
+def ensure_vosk_model():
+    if os.path.exists(VOSK_MODEL_PATH):
+        return True
+    st.warning("Vosk model not found. Downloading automatically (~40 MB)...")
     try:
-        if not os.path.exists(VOSK_MODEL_PATH):
-            st.warning("Vosk model not found. Voice disabled.")
+        progress_bar = st.progress(0.0)
+        status_text = st.empty()
+        status_text.text("Starting download...")
+        _download_with_progress(VOSK_MODEL_URL, VOSK_MODEL_ZIP, progress_bar, status_text)
+        status_text.text("Extracting model...")
+        with zipfile.ZipFile(VOSK_MODEL_ZIP, 'r') as zip_ref:
+            zip_ref.extractall(".")
+        candidates = [d for d in os.listdir('.') if os.path.isdir(d) and (d.startswith('vosk-model') or d.startswith('vosk-model-small'))]
+        if not candidates:
+            st.error("Extraction succeeded but model folder not found.")
+            return False
+        extracted_folder = candidates[0]
+        if os.path.exists(VOSK_MODEL_PATH) and os.path.isdir(VOSK_MODEL_PATH):
+            try:
+                shutil.rmtree(VOSK_MODEL_PATH)
+            except Exception:
+                pass
+        shutil.move(extracted_folder, VOSK_MODEL_PATH)
+        try:
+            os.chmod(VOSK_MODEL_PATH, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP)
+        except Exception:
+            pass
+        try:
+            os.remove(VOSK_MODEL_ZIP)
+        except Exception:
+            pass
+        progress_bar.progress(1.0)
+        status_text.text("Download completed!")
+        st.success("Vosk model ready ✔")
+        return True
+    except Exception as e:
+        st.error(f"Vosk model download failed: {e}")
+        return False
+
+def transcribe_audio_offline(audio_bytes):
+    try:
+        if not ensure_vosk_model():
             return ""
-        model = Model(VOSK_MODEL_PATH)
-        rec = KaldiRecognizer(model, 16000)
-        with wave.open(wav_path, "rb") as wf:
+        try:
+            from vosk import Model as VoskModel, KaldiRecognizer as VoskKaldiRecognizer
+        except Exception as e:
+            st.error(f"Vosk package not available: {e}")
+            return ""
+
+        import io
+        from pydub import AudioSegment
+
+        # Convert browser WebM/Opus to WAV
+        audio = AudioSegment.from_file(io.BytesIO(audio_bytes))
+        audio = audio.set_channels(1).set_frame_rate(16000).set_sample_width(2)
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_wav:
+            audio.export(tmp_wav.name, format="wav")
+            tmp_path = tmp_wav.name
+
+        with wave.open(tmp_path, "rb") as wf:
+            model = VoskModel(VOSK_MODEL_PATH)
+            rec = VoskKaldiRecognizer(model, wf.getframerate())
             while True:
                 data = wf.readframes(4000)
                 if len(data) == 0:
                     break
                 rec.AcceptWaveform(data)
-        return json.loads(rec.FinalResult()).get("text", "")
+            res = json.loads(rec.FinalResult())
+            return res.get("text", "")
     except Exception as e:
-        st.error(f"Transcription failed: {e}")
+        st.error(f"Transcription Error: {e}")
         return ""
 
-# --------------------------- DOCUMENT TEXT EXTRACTION ---------------------------
+# --------------------------- DOCUMENT EXTRACTION & SUMMARIZATION ---------------------------
 def extract_text_from_file(file):
     if file.type == "application/pdf":
         reader = PdfReader(file)
@@ -134,22 +247,19 @@ def extract_text_from_file(file):
     else:
         return "Unsupported file type."
 
-# --------------------------- TEXT SUMMARIZATION/TRUNCATION ---------------------------
 def summarize_or_truncate_text(text, max_tokens=3000):
     words = text.split()
     if len(words) > max_tokens:
         truncated = " ".join(words[:max_tokens])
-        return truncated + "\n\n[Text truncated due to length. Please provide a shorter document or specify a summary request.]"
+        return truncated + "\n\n[Text truncated due to length.]"
     return text
 
-# --------------------------- TTS ---------------------------
 def do_tts(text, lang="en"):
     tts = gTTS(text=text, lang=lang)
     f = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
     tts.save(f.name)
     return f.name
 
-# --------------------------- PDF EXPORT ---------------------------
 def create_pdf(text, title):
     from io import BytesIO
     buffer = BytesIO()
@@ -171,7 +281,6 @@ def create_pdf(text, title):
     buffer.seek(0)
     return buffer.getvalue()
 
-# --------------------------- MEMORY LOG ---------------------------
 def append_memory_log(query, answer):
     with open("memory.txt", "a", encoding="utf-8") as f:
         f.write(f"\n[{datetime.now()}]\nQ: {query}\nA: {answer}\n")
@@ -196,7 +305,7 @@ if "uploaded_doc_text" not in st.session_state:
 # --------------------------- SIDEBAR ---------------------------
 with st.sidebar:
     st.markdown("### 🌗 Theme Mode")
-    st.session_state.theme = st.radio("", ["Light", "Dark"], index=0 if st.session_state.theme=="Light" else 1)
+    st.session_state.theme = st.radio("", ["Light", "Dark"], index=0 if st.session_state.theme=="Light" else 1, label_visibility="hidden")
     st.markdown(LIGHT_CSS if st.session_state.theme=="Light" else DARK_CSS, unsafe_allow_html=True)
 
     if Path(LOGO_PATH).exists():
@@ -213,7 +322,7 @@ with st.sidebar:
         st.session_state.current_session_file = create_new_session_file()
         st.session_state.session_data = load_session_file(st.session_state.current_session_file)
         st.session_state.uploaded_doc_text = ""
-        st.experimental_rerun()
+        st.rerun()
     if cols[1].button("💾 Save"):
         save_session_file(st.session_state.current_session_file, st.session_state.session_data)
         st.success("Session saved.")
@@ -226,26 +335,22 @@ with st.sidebar:
         st.rerun()
 
     st.divider()
-    st.markdown("**Previous Sessions**")
-    files = list_session_files()
-    if files:
-        selected = st.selectbox("Load a session", ["-- choose --"] + files)
-        if selected and selected != "-- choose --":
-            st.session_state.current_session_file = selected
-            st.session_state.session_data = load_session_file(selected)
-            st.session_state.uploaded_doc_text = ""
-            st.rerun()
+    st.subheader("📜 History")
+    messages = st.session_state.session_data.get("messages", [])
+    if messages:
+        for msg in messages[-20:][::-1]:
+            role = "🧑 User" if msg["role"]=="user" else "🤖 AI"
+            st.markdown(f"{role}: {msg['content'][:200]}{'...' if len(msg['content'])>200 else ''}")
     else:
-        st.write("_No sessions found_")
+        st.write("_No history yet_")
 
     st.divider()
     st.subheader("📁 Export Current Session")
-    export_txt = "\n".join([f"{m['role']}: {m['content']}" for m in st.session_state.session_data.get("messages", [])])
+    export_txt = "\n".join([f"{m['role']}: {m['content']}" for m in messages])
     export_txt_bytes = export_txt.encode('utf-8')
     st.download_button("Download TXT", export_txt_bytes, file_name=f"{st.session_state.session_data.get('title','session')}.txt", mime="text/plain")
     export_pdf_bytes = create_pdf(export_txt, st.session_state.session_data.get("title", "session"))
-    pdf_filename = f"{st.session_state.session_data.get('title','session')}.pdf"
-    st.download_button("Download PDF", export_pdf_bytes, file_name=pdf_filename, mime="application/pdf")
+    st.download_button("Download PDF", export_pdf_bytes, file_name=f"{st.session_state.session_data.get('title','session')}.pdf", mime="application/pdf")
 
 # --------------------------- MAIN UI ---------------------------
 st.markdown('<div class="chat-container">', unsafe_allow_html=True)
@@ -253,7 +358,7 @@ st.title("🤖 Open DeepResearch AI")
 
 for msg in st.session_state.session_data.get("messages", []):
     role_class = "user-message" if msg.get("role") == "user" else "assistant-message"
-    st.markdown(f'<div class="chat-message {role_class}">{msg.get("content","")}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="chat-message {role_class}">{msg.get("content", "")}</div>', unsafe_allow_html=True)
     if msg.get("sources"):
         with st.expander("🔍 Sources & Details"):
             st.markdown(msg.get("sources"))
@@ -269,10 +374,7 @@ with col1:
     audio = mic_recorder(start_prompt="🎙️ Start Recording", stop_prompt="⏹️ Stop Recording", key="recorder")
     if audio:
         st.success("Audio recorded. Transcribing...")
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
-            tmp_file.write(audio['bytes'])
-            tmp_path = tmp_file.name
-        transcribed_text = transcribe_audio_offline(tmp_path)
+        transcribed_text = transcribe_audio_offline(audio['bytes'])
         final_input = transcribed_text if transcribed_text else ""
 with col2:
     pasted_text = st.text_area("Paste text", height=60)
@@ -311,7 +413,6 @@ if final_input:
 
     with st.spinner("Processing..."):
         try:
-            # ---------------- Mode-only logic mapping ----------------
             if mode == "normal" or mode == "code":
                 result = run_langgraph_pipeline(final_input, mode=mode)
                 final_answer = result.get("final_text","") if result else "No response."
@@ -326,7 +427,7 @@ if final_input:
                 if merged.get("combined_sources"):
                     detail_text = "\n".join([f"- {s}" for s in merged["combined_sources"]])
             elif mode == "fast summary":
-                web = searcher_agent([final_input]).get(final_input,{})
+                web = fast_summary_agent(final_input)
                 final_answer = (web.get("content") or "No results found.")[:1500]
                 if web.get("sources"):
                     detail_text = "\n".join([f"- {s}" for s in web["sources"]])
@@ -336,7 +437,7 @@ if final_input:
                 final_answer = "\n".join([f"{i+1}. {p}" for i,p in enumerate(papers)]) if papers else "No papers found."
                 detail_text = "\n".join([f"- {p}" for p in papers])
             elif mode == "web search":
-                web = searcher_agent([final_input]).get(final_input,{})
+                web = web_search_with_llm(final_input)
                 final_answer = web.get("content","No web results found.")
                 if web.get("sources"):
                     detail_text = "\n".join([f"- {s}" for s in web["sources"]])
@@ -353,12 +454,10 @@ if final_input:
                 detail_text = "\n".join([f"- {a}" for a in academic] + [f"- {w}" for w in web_links])
             else:
                 final_answer = "Mode not supported."
-
         except Exception as e:
             final_answer = f"Error: {e}"
             detail_text = ""
 
-    # Typing animation
     typing_text = ""
     for char in final_answer:
         typing_text += char
@@ -370,19 +469,16 @@ if final_input:
         with st.expander("🔍 Sources & Details"):
             st.markdown(detail_text)
 
-    # TTS
     try:
         audio_path = do_tts(final_answer, lang=tts_lang)
         st.audio(open(audio_path,"rb").read())
     except:
         pass
 
-    # Downloads
     txt_name = f"{st.session_state.session_data.get('title','session')[:30].replace(' ','_')}.txt"
     txt_bytes = final_answer.encode('utf-8')
     st.download_button("Download TXT (response)", txt_bytes, file_name=txt_name, mime="text/plain")
 
-    # Writer Agent PDF
     if mode=="deep research":
         try:
             pdf_name = writer_generate_pdf(final_answer, filename=f"{st.session_state.session_data.get('title','research')[:40].replace(' ','_')}.pdf")
@@ -390,12 +486,10 @@ if final_input:
                 st.download_button("Download Research PDF", pf, file_name=pdf_name)
         except:
             pdf_bytes = create_pdf(final_answer, st.session_state.session_data.get("title","session"))
-            pdf_name = f"{st.session_state.session_data.get('title','session')}.pdf"
-            st.download_button("Download PDF (response)", pdf_bytes, file_name=pdf_name, mime="application/pdf")
+            st.download_button("Download PDF (response)", pdf_bytes, file_name=f"{st.session_state.session_data.get('title','session')}.pdf", mime="application/pdf")
     else:
         pdf_bytes = create_pdf(final_answer, st.session_state.session_data.get("title","session"))
-        pdf_name = f"{st.session_state.session_data.get('title','session')}.pdf"
-        st.download_button("Download PDF (response)", pdf_bytes, file_name=pdf_name, mime="application/pdf")
+        st.download_button("Download PDF (response)", pdf_bytes, file_name=f"{st.session_state.session_data.get('title','session')}.pdf", mime="application/pdf")
 
     st.session_state.session_data.setdefault("messages",[]).append({"role":"assistant","content":final_answer,"sources":detail_text})
     st.session_state.stats["total"] +=1
