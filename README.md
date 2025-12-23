@@ -1,5 +1,3 @@
-👇
-
 📘 About OpenDeepResearcher
 
 OpenDeepResearcher is an AI-based research assistant that helps users study any topic deeply and quickly. Instead of searching, reading, and summarizing information manually, this system does everything automatically using AI agents.
@@ -131,7 +129,6 @@ Session memory and export (PDF / TXT)
 |      LLMs         |
 | (LM Studio, etc.) |
 +-------------------+
-
 
 
 🔄 Overall Workflow (Human-like Research Flow)
