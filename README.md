@@ -1,6 +1,7 @@
-📘 About OpenDeepResearcher
+Open Deep Research
+1. Project Title
+Open Deep Research – A Multi-Agent AI System for Research-Oriented Question Answering
 
-OpenDeepResearcher is an AI-based research assistant that helps users study any topic deeply and quickly. Instead of searching, reading, and summarizing information manually, this system does everything automatically using AI agents.
 
 The project works like a smart human researcher. First, it understands the user’s question and breaks it into smaller parts. Then it searches the internet for reliable information, studies the collected data, and finally writes a clear and structured research report.
 
