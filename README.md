@@ -1,136 +1,149 @@
-Open Deep Research
-1. Project Title
-Open Deep Research – A Multi-Agent AI System for Research-Oriented Question Answering
+# Open Deep Research
+
+
+## 1. Project Title
+**Open Deep Research** – A Multi-Agent AI System for Research-Oriented Question Answering
 
 
 The project works like a smart human researcher. First, it understands the user’s question and breaks it into smaller parts. Then it searches the internet for reliable information, studies the collected data, and finally writes a clear and structured research report.
 
-The system uses multiple AI agents:
+---
+**The system uses multiple AI agents:**
 
-A Planner Agent decides what to research.
+- A Planner Agent decides what to research.
 
-A Searcher Agent finds useful information from the web.
+- A Searcher Agent finds useful information from the web.
 
-A Writer Agent summarizes and explains the findings in simple language.
+- A Writer Agent summarizes and explains the findings in simple language.
 
 All agents are connected using an agent workflow system, allowing smooth coordination. The project can also remember previous research sessions, so users can continue their work later.
 
 OpenDeepResearcher is built using Python, LangGraph, LangChain, local LLMs (like LM Studio), and the Tavily search API. It is useful for students, researchers, and anyone who wants fast, organized, and reliable research output.
 
-🧠 OpenDeepResearcher
 
-** Agentic AI Research Framework **
+---
 
-OpenDeepResearcher is an AI-powered research assistant that autonomously plans, searches, analyzes, and generates structured research reports using multi-agent workflows, local or hosted LLMs, and real-time web search APIs.
+## 2. Project Overview 
 
-🎯 Project Objective (Explained Clearly)
+OpenDeepResearcher is an AI-powered research assistant designed to autonomously perform deep, multi-step research on complex topics using Large Language Models (LLMs) and agentic workflows.
 
-The main goal of OpenDeepResearcher is to:
+🔍 Problem It Solves
 
-Reduce manual research effort
+Manual research is time-consuming
 
-Automate complex topic exploration
+Information is scattered across multiple sources
 
-Generate high-quality, structured research reports
+Difficult to plan, retrieve, analyze, and summarize efficiently
 
-Combine web knowledge + academic knowledge
+## Main Objective 
 
-Work cost-effectively using local LLMs
+To automate the entire research pipeline by simulating how a human researcher:
 
-Why this project is important
+- Plans research
 
-Traditional research requires:
+- Searches credible sources
 
-Searching many websites
+- Synthesizes findings
 
-Reading long articles
+- Produces structured research reports
 
-Summarizing manually
+This results in high-quality, multi-perspective research outputs with minimal human effort.
+---
+## 3. Project Objective (Explained Clearly)
 
-This system does all of that automatically, just like a skilled human researcher.
+**The main goal of OpenDeepResearcher is to:**
+
+- Reduce manual research effort
+
+- Automate complex topic exploration
+
+- Generate high-quality, structured research reports
+
+- Combine web knowledge + academic knowledge
+
+- Work cost-effectively using local LLMs
+
+- Why this project is important
+
+- Traditional research requires:
+
+- Searching many websites
+
+- Reading long articles
+
+- Summarizing manually
+
+- This system does all of that automatically, just like a skilled human researcher.
 
 
 Agentic AI Research Assistant
 
 OpenDeepResearcher is an AI-powered research assistant that automatically plans, searches, analyzes, and writes structured research reports. It uses multiple AI agents and local or hosted LLMs to mimic how a human researcher works.
 
-🚀 Key Features
+---
 
-Multi-agent research workflow (Planner, Searcher, Writer)
+## 4. Software and Hardware Dependencies
 
-Local LLM support (LM Studio / Ollama)
+### Software Dependencies
 
-Real-time web & academic research
+**Programming Language**
+- Python 3.10+
 
-Structured research paper generation
+**Core Libraries & Frameworks**
 
-ChatGPT-like UI (Streamlit)
+- LangGraph – Multi-agent workflow orchestration
 
-Offline voice input & text-to-speech
+- LangChain – LLM integration, memory handling, tools
 
-Session memory and export (PDF / TXT)
+- Streamlit / Flask – User Interface (optional)
 
-🏗  Architecture Diagram
+**APIs & Tools**
 
+- Tavily API – Web search & real-time data retrieval
 
+- LM Studio / Ollama – Local LLM inference
 
+- OpenAI-compatible API Interface
 
-+-------------------+
-|       User        |
-| (UI / Browser)   |
-+---------+---------+
-          |
-          v
-+-------------------+
-|  User Interface   |
-| (Streamlit / UI) |
-+---------+---------+
-          |
-          v
-+-------------------+
-|  Planner Agent    |
-| - Understands     |
-| - Breaks topic    |
-| - Creates plan   |
-+---------+---------+
-          |
-          v
-+-------------------+
-| Execution Graph   |
-|   (LangGraph)    |
-| - Controls flow  |
-| - Agent routing  |
-+----+---------+---+
-     |         |
-     v         v
-+--------+  +----------------+
-|Searcher|  |  Memory System |
-| Agent  |  | (Optional)     |
-| Tavily |  | Session Store  |
-+----+---+  +----------------+
-     |
-     v
-+-------------------+
-|   Writer Agent    |
-| - Analyzes data  |
-| - Summarizes     |
-| - Writes report  |
-+---------+---------+
-          |
-          v
-+-------------------+
-|  Final Research   |
-|     Report        |
-+-------------------+
+**Models Used**
 
-          ^
-          |
-+-------------------+
-|   Local / Hosted  |
-|      LLMs         |
-| (LM Studio, etc.) |
-+-------------------+
+- Qwen2.5-7B-Instruct (or any instruction-tuned LLM)
 
+- Environment & Tooling
+
+- pip, venv
+
+- Git for version control
+
+### Hardware Dependencies
+
+The system is optimized to run on a standard student laptop:
+- Processor: Intel i5 core
+- RAM: Minimum 8 GB
+- Storage: At least 5 GB free space
+- GPU: Not required
+- Operating System: Windows 11
+
+---
+
+---
+
+## 5. High-Level Architecture
+
+The architecture of Open Deep Research follows a layered multi-agent design.
+
+![Open Deep Research Architecture](https://github.com/LakshanLikhitM/OPEN-DEEP-RESEARCH/blob/main/architecture.png)
+
+### Architecture Description
+
+- The Streamlit interface handles all user interactions.
+- A session memory layer maintains conversation context.
+- The Planner Agent analyzes user queries and structures research steps.
+- The Searcher Agent retrieves information from trusted academic sources.
+- The Writer Agent synthesizes research into a clear final response.
+- Chat history is stored locally and can be reused within the session.
+
+---
 
 🔄 Overall Workflow (Human-like Research Flow)
 User Query
