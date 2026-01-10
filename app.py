@@ -24,12 +24,43 @@ import shutil
 import stat
 from openai import OpenAI
 
+IS_CLOUD = os.getenv("STREAMLIT_CLOUD") is not None
+
+
 # Local LM Studio Client
-local_client = OpenAI(
-    base_url="http://localhost:1234/v1",
-    api_key="lm-studio",
-    timeout=180
-)
+from openai import OpenAI
+
+local_client = None
+openai_client = None
+
+if IS_CLOUD:
+    openai_client = OpenAI(
+        api_key=st.secrets["OPENAI_API_KEY"]
+    )
+else:
+    local_client = OpenAI(
+        base_url="http://localhost:1234/v1",
+        api_key="lm-studio",
+        timeout=180
+    )
+    
+def generate_llm(prompt):
+    try:
+        if IS_CLOUD:
+            final_answer = generate_llm(final_input) = openai_client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return final_answer = generate_llm(final_input).choices[0].message.content
+        else:
+            final_answer = generate_llm(final_input) = local_client.chat.completions.create(
+                model="qwen2.5-7b-instruct",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return final_answer = generate_llm(final_input).choices[0].message.content
+    except Exception as e:
+        return f"❌ LLM Error: {e}"
+
 
 # Import research & writer modules
 from research_assistant import (
@@ -45,11 +76,11 @@ from writer import writer_agent, generate_pdf as writer_generate_pdf
 def fast_summary_agent(query):
     prompt = f"Give a fast and quick summary in fewer lines: {query}"
     try:
-        response = local_client.chat.completions.create(
+        final_answer = generate_llm(final_input) = local_client.chat.completions.create(
             model="qwen2.5-7b-instruct-1m-q4",
             messages=[{"role": "user", "content": prompt}]
         )
-        content = response.choices[0].message.content
+        content = final_answer = generate_llm(final_input).choices[0].message.content
         return {"content": content, "sources": []}
     except Exception as e:
         return {"content": f"Error generating summary: {e}", "sources": []}
@@ -62,11 +93,11 @@ def web_search_with_llm(query):
     sources = raw.get("sources", [])
     prompt = f"Summarize the following web search results on '{query}' in a concise and informative way:\n\n{tavily_content}"
     try:
-        response = local_client.chat.completions.create(
+        final_answer = generate_llm(final_input) = local_client.chat.completions.create(
             model="qwen2.5-7b-instruct-1m-q4",
             messages=[{"role": "user", "content": prompt}]
         )
-        content = response.choices[0].message.content
+        content = final_answer = generate_llm(final_input).choices[0].message.content
         return {"content": content, "sources": sources}
     except Exception as e:
         return {"content": f"Error: {e}", "sources": sources}
@@ -303,34 +334,72 @@ if "uploaded_doc_text" not in st.session_state:
     st.session_state.uploaded_doc_text = ""
 
 # --------------------------- SIDEBAR ---------------------------
+# --------------------------- SIDEBAR ---------------------------
 with st.sidebar:
     st.markdown("### 🌗 Theme Mode")
-    st.session_state.theme = st.radio("", ["Light", "Dark"], index=0 if st.session_state.theme=="Light" else 1, label_visibility="hidden")
-    st.markdown(LIGHT_CSS if st.session_state.theme=="Light" else DARK_CSS, unsafe_allow_html=True)
+
+    st.session_state.theme = st.radio(
+        "Theme",
+        ["Light", "Dark"],
+        index=0 if st.session_state.theme == "Light" else 1,
+        label_visibility="hidden"
+    )
+
+    st.markdown(
+        LIGHT_CSS if st.session_state.theme == "Light" else DARK_CSS,
+        unsafe_allow_html=True
+    )
 
     if Path(LOGO_PATH).exists():
         st.image(LOGO_PATH, width=140)
+
     st.title("OPEN DEEPRESEARCH")
 
-    mode = st.selectbox("Mode", ["normal", "deep research", "fast summary", "academic", "code", "web search", "research papers", "hybrid search"], index=0)
+    mode = st.selectbox(
+        "Mode",
+        [
+            "normal",
+            "deep research",
+            "fast summary",
+            "academic",
+            "code",
+            "web search",
+            "research papers",
+            "hybrid search"
+        ],
+        index=0
+    )
+
     tts_lang = st.selectbox("Voice", ["en", "hi", "fr", "es"])
 
     st.subheader("💬 Sessions")
     st.markdown(f"**Current:** {st.session_state.current_session_file}")
-    cols = st.columns([1,1,1])
+
+    cols = st.columns(3)
     if cols[0].button("➕ New Chat"):
         st.session_state.current_session_file = create_new_session_file()
-        st.session_state.session_data = load_session_file(st.session_state.current_session_file)
+        st.session_state.session_data = load_session_file(
+            st.session_state.current_session_file
+        )
         st.session_state.uploaded_doc_text = ""
         st.rerun()
+
     if cols[1].button("💾 Save"):
-        save_session_file(st.session_state.current_session_file, st.session_state.session_data)
+        save_session_file(
+            st.session_state.current_session_file,
+            st.session_state.session_data
+        )
         st.success("Session saved.")
+
     if cols[2].button("🗑️ Delete"):
         delete_session_file(st.session_state.current_session_file)
         files = list_session_files()
-        st.session_state.current_session_file = files[0] if files else create_new_session_file()
-        st.session_state.session_data = load_session_file(st.session_state.current_session_file)
+        st.session_state.current_session_file = (
+            files[0] if files else create_new_session_file()
+        )
+        st.session_state.session_data = load_session_file(
+            st.session_state.current_session_file
+        )
         st.session_state.uploaded_doc_text = ""
         st.rerun()
 
@@ -415,7 +484,7 @@ if final_input:
         try:
             if mode == "normal" or mode == "code":
                 result = run_langgraph_pipeline(final_input, mode=mode)
-                final_answer = result.get("final_text","") if result else "No response."
+                final_answer = result.get("final_text","") if result else "No final_answer = generate_llm(final_input)."
                 if result and isinstance(result.get("answers"), dict):
                     for q, info in result["answers"].items():
                         detail_text += f"### {q}\n{info.get('content','')}\n\n"
@@ -477,7 +546,7 @@ if final_input:
 
     txt_name = f"{st.session_state.session_data.get('title','session')[:30].replace(' ','_')}.txt"
     txt_bytes = final_answer.encode('utf-8')
-    st.download_button("Download TXT (response)", txt_bytes, file_name=txt_name, mime="text/plain")
+    st.download_button("Download TXT (final_answer = generate_llm(final_input))", txt_bytes, file_name=txt_name, mime="text/plain")
 
     if mode=="deep research":
         try:
@@ -486,10 +555,10 @@ if final_input:
                 st.download_button("Download Research PDF", pf, file_name=pdf_name)
         except:
             pdf_bytes = create_pdf(final_answer, st.session_state.session_data.get("title","session"))
-            st.download_button("Download PDF (response)", pdf_bytes, file_name=f"{st.session_state.session_data.get('title','session')}.pdf", mime="application/pdf")
+            st.download_button("Download PDF (final_answer = generate_llm(final_input))", pdf_bytes, file_name=f"{st.session_state.session_data.get('title','session')}.pdf", mime="application/pdf")
     else:
         pdf_bytes = create_pdf(final_answer, st.session_state.session_data.get("title","session"))
-        st.download_button("Download PDF (response)", pdf_bytes, file_name=f"{st.session_state.session_data.get('title','session')}.pdf", mime="application/pdf")
+        st.download_button("Download PDF (final_answer = generate_llm(final_input))", pdf_bytes, file_name=f"{st.session_state.session_data.get('title','session')}.pdf", mime="application/pdf")
 
     st.session_state.session_data.setdefault("messages",[]).append({"role":"assistant","content":final_answer,"sources":detail_text})
     st.session_state.stats["total"] +=1
