@@ -46,7 +46,7 @@ def fast_summary_agent(query):
     prompt = f"Give a fast and quick summary in fewer lines: {query}"
     try:
         response = local_client.chat.completions.create(
-            model="qwen2.5-7b-instruct-1m-q4",
+            model="qwen/qwen2.5-vl-7b",
             messages=[{"role": "user", "content": prompt}]
         )
         content = response.choices[0].message.content
