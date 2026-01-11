@@ -305,8 +305,19 @@ if "uploaded_doc_text" not in st.session_state:
 # --------------------------- SIDEBAR ---------------------------
 with st.sidebar:
     st.markdown("### 🌗 Theme Mode")
-    st.session_state.theme = st.radio("", ["Light", "Dark"], index=0 if st.session_state.theme=="Light" else 1, label_visibility="hidden")
-    st.markdown(LIGHT_CSS if st.session_state.theme=="Light" else DARK_CSS, unsafe_allow_html=True)
+
+    st.session_state.theme = st.radio(
+        "Theme",
+        ["Light", "Dark"],
+        index=0 if st.session_state.theme == "Light" else 1,
+        label_visibility="collapsed"
+    )
+
+    st.markdown(
+        LIGHT_CSS if st.session_state.theme == "Light" else DARK_CSS,
+        unsafe_allow_html=True
+    )
+
 
     if Path(LOGO_PATH).exists():
         st.image(LOGO_PATH, width=140)
