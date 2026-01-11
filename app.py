@@ -23,6 +23,8 @@ import zipfile
 import shutil
 import stat
 from openai import OpenAI
+from llm_router import generate_response
+
 
 # Local LM Studio Client
 local_client = OpenAI(
